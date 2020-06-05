@@ -10,7 +10,7 @@ I plan to add more useful features to the tool, such as:
 ## Compilation for Windows (on Linux dev box)
 
 1. Add the Rust toolchain "x86_64-pc-windows-gnu"
-   1. `rustup add target x86_64-pc-windows-gnu`
+   1. `rustup target add x86_64-pc-windows-gnu`
 2. Install "mingw-w64" linker
    1. `sudo apt install mingw-w64`
 3. Compile program targeting Windows:
