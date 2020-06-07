@@ -69,7 +69,9 @@ fn scan_host_tcp_ports(target: String, timeout_ms: u64) {
             };
             // Scan all TCP ports allocated to the thread
             for port in start_port..=end_port {
+                // Create the new connect for connection attempt
                 let socket_addr = SocketAddr::new(ip_addr, port);
+                // Attempt TCP connection with timeout if specified
                 let connect_result = {
                     if timeout_ms == 0 {
                         TcpStream::connect(&socket_addr)
@@ -77,11 +79,8 @@ fn scan_host_tcp_ports(target: String, timeout_ms: u64) {
                         TcpStream::connect_timeout(&socket_addr, Duration::from_millis(timeout_ms))
                     }
                 };
-
-                if let Ok(_stream) =
-                    TcpStream::connect(&socket_addr)
-                {
-                    // Add the port to the open list
+                // Check if the connection attempt was successful or not
+                if connect_result.is_ok() {
                     ports_open.lock().unwrap().push(port);
                 }
                 // Increment the total number of ports scanned
