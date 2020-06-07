@@ -3,11 +3,19 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use clap::{Arg, App, SubCommand};
 use indicatif::{ProgressBar, ProgressStyle};
 
 const THREAD_CAP: u16 = 100;
 
 fn main() {
+    // Process command line arguments
+    let matches = App::new("Rusty Port Scanner")
+                        .version("0.1.0")
+                        .about("TCP and UDP port scanner")
+                        .author("Connor Mooney-Collett")
+                        .get_matches();
+    // TEST - scan localhost TCP ports
     scan_localhost_tcp_ports();
 }
 
