@@ -9,7 +9,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 const THREAD_CAP: u16 = 100;
 
 fn main() {
-    // Process command line arguments
+    // Set up command-line argument parser
     let matches = App::new("Rusty Port Scanner")
                         .version("0.1.0")
                         .about("TCP and UDP port scanner")
@@ -20,14 +20,22 @@ fn main() {
                             .value_name("TARGET")
                             .help("Scan target")
                             .takes_value(true))
+                        .arg(Arg::with_name("timeout")
+                            .short("to")
+                            .long("timeout")
+                            .value_name("TIMEOUT")
+                            .help("Timeout for TCP connection in ms")
+                            .takes_value(true))
                         .get_matches();
+    // Extract command-line arguments
     let target = matches.value_of("target").unwrap_or("127.0.0.1");
+    let timeout_ms = matches.value_of("timeout").unwrap_or("0").parse::<u64>().unwrap();
     // TEST - scan localhost TCP ports
-    scan_host_tcp_ports(String::from(target));
+    scan_host_tcp_ports(String::from(target), timeout_ms);
 }
 
 /// Conducts a port scan on local computer
-fn scan_host_tcp_ports(target: String) {
+fn scan_host_tcp_ports(target: String, timeout_ms: u64) {
     println!("Scanning {} ...", target);
     // Initialise array to hold handles to worker threads
     let mut worker_threads: Vec<thread::JoinHandle<()>> = vec![];
@@ -62,6 +70,14 @@ fn scan_host_tcp_ports(target: String) {
             // Scan all TCP ports allocated to the thread
             for port in start_port..=end_port {
                 let socket_addr = SocketAddr::new(ip_addr, port);
+                let connect_result = {
+                    if timeout_ms == 0 {
+                        TcpStream::connect(&socket_addr)
+                    } else {
+                        TcpStream::connect_timeout(&socket_addr, Duration::from_millis(timeout_ms))
+                    }
+                };
+
                 if let Ok(_stream) =
                     TcpStream::connect(&socket_addr)
                 {
