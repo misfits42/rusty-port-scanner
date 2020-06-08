@@ -171,7 +171,7 @@ fn scan_host_tcp_ports(target: String, timeout_ms: u64, ports: Vec<u16>) {
     let ports_open = Arc::try_unwrap(ports_open).unwrap().into_inner().unwrap();
     let mut ordered_ports_open = ports_open.keys().map(|x| *x).collect::<Vec<u16>>();
     ordered_ports_open.sort();
-    for (port, banner) in ports_open {
-        println!("[+] OPEN - tcp/{} - {}", port, banner);
+    for port in ordered_ports_open {
+        println!("[+] OPEN - tcp/{}", port);
     }
 }
