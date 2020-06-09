@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use clap::{App, Arg};
 use indicatif::{ProgressBar, ProgressStyle};
 
-const THREAD_CAP: u16 = 10;
+const THREAD_CAP: u16 = 100;
 
 fn main() {
     // Set up command-line argument parser
