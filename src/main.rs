@@ -89,7 +89,7 @@ fn main() {
             (port_limits[0]..=port_limits[1]).collect()
         }
     };
-    // TEST - scan localhost TCP ports
+    // TCP connect scan - target host
     scan_host_tcp_ports(String::from(target), timeout_ms, port_range);
 }
 
