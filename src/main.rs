@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, UdpSocket};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use clap::{App, Arg};
 use indicatif::{ProgressBar, ProgressStyle};
 
-const THREAD_CAP: u16 = 100;
+const THREAD_CAP: u16 = 300;
 
 fn main() {
     // Set up command-line argument parser
@@ -41,6 +41,13 @@ fn main() {
                 .help("Range of ports to scan")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("proto")
+                .long("proto")
+                .value_name("PROTO")
+                .help("L4 protocol to use - TCP or UDP")
+                .takes_value(true),
+        )
         .get_matches();
     // Extract command-line arguments
     let target = matches.value_of("target").unwrap_or("127.0.0.1");
@@ -49,6 +56,7 @@ fn main() {
         .unwrap_or("0")
         .parse::<u64>()
         .unwrap();
+    let proto = matches.value_of("proto").unwrap_or("tcp").to_lowercase();
     // Generate the port range to use
     let port_limits_raw = matches
         .value_of("ports")
@@ -90,7 +98,102 @@ fn main() {
         }
     };
     // TCP connect scan - target host
-    scan_host_tcp_ports(String::from(target), timeout_ms, port_range);
+    if proto == String::from("tcp") {
+        scan_host_tcp_ports(String::from(target), timeout_ms, port_range);
+    } else if proto == String::from("udp") {
+        scan_host_udp_ports(String::from(target), timeout_ms, port_range);
+    } else {
+        eprintln!("[!] ERROR: Invalid L4 protocol.");
+        return;
+    }
+}
+
+fn scan_host_udp_ports(target: String, timeout_ms: u64, ports:Vec<u16>) {
+    println!("Scanning {} ...", target);
+    // Initialise array to hold handles to worker threads
+    let mut worker_threads: Vec<thread::JoinHandle<()>> = vec![];
+    // Initialise variables to be shared across threads
+    let progress_bar = Arc::new(Mutex::new(ProgressBar::new(ports.len() as u64)));
+    progress_bar.lock().unwrap().set_style(
+        ProgressStyle::default_bar()
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
+            )
+            .progress_chars("#>-"),
+    );
+    let ports_open = Arc::new(Mutex::new(HashMap::<u16, String>::new()));
+    let ports_to_scan = Arc::new(Mutex::new(ports.clone().into_iter().collect::<VecDeque<u16>>()));
+    let total_ports: u16 = ports.len() as u16;
+    // Calculate number of threads to use
+    let total_threads = cmp::min(total_ports, THREAD_CAP);
+    // Check if IP address provided is valid
+    let ip_addr_result = target.parse::<Ipv4Addr>();
+    if ip_addr_result.is_err() {
+        eprintln!("[!] ERROR: Invalid IP address format for target.");
+        return;
+    }
+    let ip_addr = IpAddr::V4(ip_addr_result.unwrap());
+    // Spawn all the worker threads
+    for _ in 0..total_threads {
+        // Clone the shared variables
+        let progress_bar = Arc::clone(&progress_bar);
+        let ports_open = Arc::clone(&ports_open);
+        let ports_to_scan = Arc::clone(&ports_to_scan);
+        worker_threads.push(thread::spawn(move || {
+            loop {
+                // Get the next available port
+                let pop_result = ports_to_scan.lock().unwrap().pop_front();
+                if pop_result == None {
+                    break;
+                }
+                let port = pop_result.unwrap();
+                // Bind new UDP socket to receive reply on
+                let udp_local_socket = UdpSocket::bind("0.0.0.0:0").expect("Unable to bind UDP socket.");
+                udp_local_socket.set_nonblocking(true).unwrap();
+                let socket_addr = SocketAddr::new(ip_addr, port);
+                udp_local_socket.connect(socket_addr).expect("Socket association failed.");
+                udp_local_socket.send("HELLO WORLD".as_bytes()).expect("Could not send message.");
+                // Continue to poll the UDP socket for received data until timeout is reached
+                let mut recv_buffer: Vec<u8> = vec![0; 1024];
+                let result: Result<usize, std::io::Error> = {
+                    let time = std::time::SystemTime::now();
+                    let mut temp;
+                    loop {
+                        temp = udp_local_socket.recv(&mut recv_buffer);
+                        if temp.is_ok() || time.elapsed().unwrap().as_millis() >= timeout_ms as u128 {
+                            break;
+                        }
+                    }
+                    temp
+                };
+                match result {
+                    Ok(_received) => { // Interpret port as OPEN if we get a reply
+                        ports_open.lock().unwrap().insert(port, String::from(""));
+                    },
+                    Err(_error) => {
+                        // println!("UDP recv failed: {:?}", _error)
+                    }
+                }
+                // Increment the total number of ports scanned
+                let pb = progress_bar.lock().unwrap();
+                pb.inc(1);
+            }
+        }));
+    }
+    // Join the worker threads
+    for worker in worker_threads {
+        let _ = worker.join();
+    }
+    // Finish the progress bar
+    let pb = progress_bar.lock().unwrap();
+    pb.finish();
+    // Unwrap the Arc and mutex to get the ports opened
+    let ports_open = Arc::try_unwrap(ports_open).unwrap().into_inner().unwrap();
+    let mut ordered_ports_open = ports_open.keys().map(|x| *x).collect::<Vec<u16>>();
+    ordered_ports_open.sort();
+    for port in ordered_ports_open {
+        println!("[+] OPEN - udp/{}", port);
+    }
 }
 
 /// Conducts a port scan on local computer
