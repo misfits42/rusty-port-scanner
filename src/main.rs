@@ -4,6 +4,7 @@ use std::thread;
 use std::time::Duration;
 use std::cmp;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 
 use clap::{App, Arg};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -107,7 +108,7 @@ fn scan_host_tcp_ports(target: String, timeout_ms: u64, ports: Vec<u16>) {
             .progress_chars("#>-"),
     );
     let ports_open = Arc::new(Mutex::new(HashMap::<u16, String>::new()));
-    let ports_to_scan = Arc::new(Mutex::new(ports.clone()));
+    let ports_to_scan = Arc::new(Mutex::new(ports.clone().into_iter().collect::<VecDeque<u16>>()));
     let total_ports: u16 = ports.len() as u16;
     // Calculate number of threads to use
     let total_threads = cmp::min(total_ports, THREAD_CAP);
@@ -119,24 +120,19 @@ fn scan_host_tcp_ports(target: String, timeout_ms: u64, ports: Vec<u16>) {
     }
     let ip_addr = IpAddr::V4(ip_addr_result.unwrap());
     // Spawn all the worker threads
-    for i in 0..total_threads {
+    for _ in 0..total_threads {
         // Clone the shared variables
         let progress_bar = Arc::clone(&progress_bar);
         let ports_open = Arc::clone(&ports_open);
         let ports_to_scan = Arc::clone(&ports_to_scan);
         worker_threads.push(thread::spawn(move || {
-            // Calculate the start and end points to cover entire range of ports over all threads
-            let start_index = ((total_ports / total_threads) + 1) * i;
-            let end_index = {
-                if (total_ports - start_index) < (total_ports / (total_threads)) {
-                    total_ports - 1
-                } else {
-                    start_index + (total_ports / total_threads)
+            loop {
+                // Get the next available port
+                let pop_result = ports_to_scan.lock().unwrap().pop_front();
+                if pop_result == None {
+                    break;
                 }
-            };
-            // Scan all TCP ports allocated to the thread
-            for port_index in start_index..=end_index {
-                let port = ports_to_scan.lock().unwrap()[port_index as usize];
+                let port = pop_result.unwrap();
                 // Create the new connect for connection attempt
                 let socket_addr = SocketAddr::new(ip_addr, port);
                 // Attempt TCP connection with timeout if specified
