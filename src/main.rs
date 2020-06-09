@@ -109,7 +109,7 @@ fn main() {
 }
 
 fn scan_host_udp_ports(target: String, timeout_ms: u64, ports:Vec<u16>) {
-    println!("Scanning {} ...", target);
+    println!("Scanning {} - UDP ...", target);
     // Initialise array to hold handles to worker threads
     let mut worker_threads: Vec<thread::JoinHandle<()>> = vec![];
     // Initialise variables to be shared across threads
@@ -198,7 +198,7 @@ fn scan_host_udp_ports(target: String, timeout_ms: u64, ports:Vec<u16>) {
 
 /// Conducts a port scan on local computer
 fn scan_host_tcp_ports(target: String, timeout_ms: u64, ports: Vec<u16>) {
-    println!("Scanning {} ...", target);
+    println!("Scanning {} - TCP ...", target);
     // Initialise array to hold handles to worker threads
     let mut worker_threads: Vec<thread::JoinHandle<()>> = vec![];
     // Initialise variables to be shared across threads
